@@ -26,7 +26,12 @@ var (
 		{ID: 1, Name: "Electronics"},
 		{ID: 2, Name: "Books"},
 	}
+	products = []Product{
+		{ID: 1, Name: "Laptop", Price: 1200.0, CategoryID: 1},
+		{ID: 2, Name: "Go Programming", Price: 45.0, CategoryID: 2},
+	}
 	nextCategoryID = 3
+	nextProductID  = 3
 )
 
 func main() {
@@ -41,6 +46,15 @@ func main() {
 			categoriesGroup.POST("", createCategory)
 			categoriesGroup.PUT("/:id", updateCategory)
 			categoriesGroup.DELETE("/:id", deleteCategory)
+		}
+
+		productsGroup := v1.Group("/products")
+		{
+			productsGroup.GET("", getProducts)
+			productsGroup.GET("/:id", getProduct)
+			productsGroup.POST("", createProduct)
+			productsGroup.PUT("/:id", updateProduct)
+			productsGroup.DELETE("/:id", deleteProduct)
 		}
 	}
 
@@ -105,4 +119,77 @@ func deleteCategory(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusNotFound, gin.H{"error": "Category not found"})
+}
+
+// --- Product Handlers ---
+
+func getProducts(c *gin.Context) {
+	c.JSON(http.StatusOK, products)
+}
+
+func getProduct(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	for _, p := range products {
+		if p.ID == id {
+			c.JSON(http.StatusOK, p)
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+}
+
+func createProduct(c *gin.Context) {
+	var newProduct Product
+	if err := c.ShouldBindJSON(&newProduct); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	categoryExists := false
+	for _, cat := range categories {
+		if cat.ID == newProduct.CategoryID {
+			categoryExists = true
+			break
+		}
+	}
+	if !categoryExists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid CategoryID"})
+		return
+	}
+
+	newProduct.ID = nextProductID
+	nextProductID++
+	products = append(products, newProduct)
+	c.JSON(http.StatusCreated, newProduct)
+}
+
+func updateProduct(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	var updatedProduct Product
+	if err := c.ShouldBindJSON(&updatedProduct); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for i, p := range products {
+		if p.ID == id {
+			updatedProduct.ID = id
+			products[i] = updatedProduct
+			c.JSON(http.StatusOK, updatedProduct)
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
+}
+
+func deleteProduct(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	for i, p := range products {
+		if p.ID == id {
+			products = append(products[:i], products[i+1:]...)
+			c.JSON(http.StatusOK, gin.H{"message": "Product deleted"})
+			return
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "Product not found"})
 }
