@@ -1,39 +1,45 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
-	"net/http"
 	"os"
+
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/app/controller"
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/app/model"
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/app/repository"
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/app/server"
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/app/service"
+	"github.com/nguyenhuynhnam/go-backend-pro/internal/pkg/postgres"
 )
 
 func main() {
-	addr := getenv("APP_ADDR", ":8080")
+	// 1. Initialize Database
+	db, err := postgres.NewConnection()
+	if err != nil {
+		log.Fatalf("could not connect to database: %v", err)
+	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":  "ok",
-			"message": "service is healthy",
-		})
-	})
-	mux.HandleFunc("/api/v1/ping", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":  "ok",
-			"message": "pong",
-		})
-	})
+	// 1b. Auto Migration
+	log.Println("running auto migration...")
+	db.AutoMigrate(&model.Category{}, &model.Product{}, &model.Inventory{})
+
+	// 2. Initialize Repository, Service, Controller
+	categoryRepo := repository.NewCategoryRepository(db)
+	categoryService := service.NewCategoryService(categoryRepo)
+	categoryCtrl := controller.NewCategoryController(categoryService)
+	productRepo := repository.NewProductRepository(db)
+	productService := service.NewProductService(productRepo)
+	productCtrl := controller.NewProductController(productService)
+	inventoryRepo := repository.NewInventoryRepository(db)
+	inventoryService := service.NewInventoryService(inventoryRepo, productRepo)
+	inventoryCtrl := controller.NewInventoryController(inventoryService)
+
+	// 3. Start HTTP Server
+	addr := getenv("APP_ADDR", ":8080")
+	httpServer := server.NewHTTPServer(addr, categoryCtrl, productCtrl, inventoryCtrl)
 
 	log.Printf("server listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
@@ -43,10 +49,4 @@ func getenv(key, fallback string) string {
 		return val
 	}
 	return fallback
-}
-
-func writeJSON(w http.ResponseWriter, status int, body map[string]string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
 }
